@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trò Chơi Kéo Co Trí Tuệ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti for victory fireworks -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@700&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Nunito', sans-serif;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        
+        /* Floating score animation */
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            50% { opacity: 1; transform: translateY(-30px) scale(1.3); }
+            100% { opacity: 0; transform: translateY(-60px) scale(1); }
+        }
+        .animate-float-score {
+            animation: floatUp 1.2s ease-out forwards;
+        }
+
+        /* Pulse glow animation for turn indicator */
+        @keyframes pulseGlowRed {
+            0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8); }
+            50% { box-shadow: 0 0 30px rgba(239, 68, 68, 1); }
+        }
+        @keyframes pulseGlowBlue {
+            0%, 100% { box-shadow: 0 0 15px rgba(59, 130, 246, 0.8); }
+            50% { box-shadow: 0 0 30px rgba(59, 130, 246, 1); }
+        }
+        .turn-red { animation: pulseGlowRed 1.5s infinite; }
+        .turn-blue { animation: pulseGlowBlue 1.5s infinite; }
+
+        /* Smooth transition for tug of war movement */
+        .tug-container {
+            transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Avatar frame inside game */
+        .player-head-frame {
+            width: 38px;
+            height: 38px;
+            border-radius: 9999px;
+            border: 2px solid #ffffff;
+            object-fit: cover;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            background-color: #fef08a;
+        }
+
+        @media (min-width: 768px) {
+            .player-head-frame {
+                width: 52px;
+                height: 52px;
+                border-width: 3px;
+            }
+        }
+
+        /* Custom scrollbar for admin modal */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-800 h-screen w-screen overflow-hidden flex flex-col justify-between">
+
+    <!-- TOP BAR: Scoreboard & Controls -->
+    <header class="w-full bg-slate-800/80 backdrop-blur-md p-2 md:p-4 border-b border-slate-700 flex justify-between items-center z-20 shadow-lg">
+        <!-- Red Team Scoreboard -->
+        <div id="redScoreCard" class="flex items-center gap-2 md:gap-4 bg-gradient-to-r from-red-600 to-rose-700 text-white px-3 py-1.5 md:px-6 md:py-3 rounded-2xl shadow-md border-2 border-red-400 transition-all duration-300">
+            <div class="text-2xl md:text-4xl">🚩</div>
+            <div>
+                <div class="text-xs md:text-sm font-black uppercase tracking-wider text-red-200">ĐỘI ĐỎ</div>
+                <div class="text-xl md:text-3xl font-black" id="scoreRed">0</div>
+            </div>
+        </div>
+
+        <!-- Center Game Status / Timer / VS -->
+        <div class="flex flex-col items-center">
+            <div class="relative flex items-center justify-center">
+                <span class="text-2xl md:text-4xl font-black bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent drop-shadow-md">VS</span>
+            </div>
+            <div class="mt-1 px-3 py-0.5 md:px-4 md:py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-xs md:text-sm font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-flag-checkered"></i>
+                <span id="questionCounter">Câu 1/5</span>
+            </div>
+        </div>
+
+        <!-- Blue Team Scoreboard -->
+        <div id="blueScoreCard" class="flex items-center gap-2 md:gap-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white px-3 py-1.5 md:px-6 md:py-3 rounded-2xl shadow-md border-2 border-blue-400 transition-all duration-300">
+            <div class="text-right">
+                <div class="text-xs md:text-sm font-black uppercase tracking-wider text-blue-200">ĐỘI XANH</div>
+                <div class="text-xl md:text-3xl font-black" id="scoreBlue">0</div>
+            </div>
+            <div class="text-2xl md:text-4xl">🔷</div>
+        </div>
+    </header>
+
+    <!-- ADMIN / TEACHER BUTTON -->
+    <div class="absolute top-16 right-3 z-20 md:top-20 md:right-5">
+        <button id="btnOpenAdmin" class="bg-slate-700/80 hover:bg-slate-600 text-amber-400 hover:text-amber-300 border border-amber-500/40 p-2.5 rounded-full shadow-lg transition-all transform hover:scale-110 active:scale-95 flex items-center justify-center" title="Quản lý câu hỏi (Giáo viên)">
+            <i class="fa-solid fa-gear text-lg md:text-xl"></i>
+        </button>
+    </div>
+
+    <!-- MAIN GAME AREA: TUG OF WAR SCENE -->
+    <main class="relative flex-1 w-full flex flex-col justify-end items-center overflow-hidden bg-sky-300">
+        <!-- Floating Score Animations Container -->
+        <div id="floatingEffectContainer" class="absolute inset-0 pointer-events-none z-30"></div>
+
+        <!-- Background Scene: Sky, Clouds, Park -->
+        <div class="absolute inset-0 bg-gradient-to-b from-sky-400 via-sky-200 to-emerald-100 flex flex-col justify-between pointer-events-none">
+            <!-- Clouds -->
+            <div class="flex justify-between p-6 opacity-80">
+                <i class="fa-solid fa-cloud text-white text-5xl md:text-7xl animate-pulse"></i>
+                <i class="fa-solid fa-cloud text-white text-4xl md:text-6xl animate-pulse" style="animation-delay: 1s;"></i>
+                <i class="fa-solid fa-cloud text-white text-6xl md:text-8xl animate-pulse" style="animation-delay: 2s;"></i>
+            </div>
+            <!-- Trees & Sun Background -->
+            <div class="w-full flex justify-between items-end px-4 opacity-70">
+                <i class="fa-solid fa-tree text-emerald-600 text-6xl md:text-8xl"></i>
+                <i class="fa-solid fa-tree text-emerald-700 text-8xl md:text-9xl"></i>
+                <i class="fa-solid fa-tree text-emerald-600 text-5xl md:text-7xl"></i>
+            </div>
+        </div>
+
+        <!-- Grass Ground -->
+        <div class="absolute bottom-0 w-full h-1/3 bg-gradient-to-t from-emerald-600 to-emerald-400 border-t-8 border-emerald-500"></div>
+
+        <!-- Center Marker on Ground -->
+        <div class="absolute bottom-1/3 translate-y-4 w-12 h-6 bg-red-600/40 rounded-full blur-xs border-2 border-red-500/80 flex justify-center items-center">
+            <div class="w-1 h-8 bg-amber-400"></div>
+        </div>
+
+        <!-- TURN ANNOUNCER BANNER -->
+        <div id="turnBanner" class="absolute top-4 z-10 px-6 py-2 rounded-full font-black text-sm md:text-lg shadow-xl border-2 transition-all duration-500 transform -translate-y-2 opacity-0">
+            Lượt trả lời: <span id="turnTeamName">ĐỘI ĐỎ</span>
+        </div>
+
+        <!-- DYNAMIC TUG OF WAR CHARACTERS & ROPE -->
+        <div id="tugGroup" class="tug-container relative w-full max-w-5xl h-48 md:h-64 mb-4 md:mb-8 flex items-center justify-center z-10">
+            
+            <!-- SVG ROPE & RED RIBBON -->
+            <div class="absolute w-full flex items-center justify-center">
+                <!-- Main Rope -->
+                <div class="w-11/12 h-3 md:h-5 bg-amber-800 rounded-full border-b-2 border-amber-950 shadow-md relative flex items-center justify-center">
+                    <!-- Rope Texture lines -->
+                    <div class="w-full h-full bg-[radial-gradient(#d97706_1px,transparent_1px)] [background-size:8px_8px] opacity-40"></div>
+                    <!-- Center Red Ribbon -->
+                    <div id="centerRibbon" class="absolute w-4 h-8 md:w-6 md:h-12 bg-red-600 border-2 border-amber-200 rounded-xs shadow-lg flex justify-center items-center transform transition-transform">
+                        <div class="w-1 h-full bg-red-800"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RED TEAM CHARACTERS (6 players pulling left) -->
+            <div class="absolute left-1 md:left-4 flex items-center space-x-[-12px] md:space-x-[-20px]" id="redTeamContainer">
+                <!-- 6 Red Team Players populated dynamically -->
+            </div>
+
+            <!-- BLUE TEAM CHARACTERS (6 players pulling right) -->
+            <div class="absolute right-1 md:right-4 flex items-center space-x-[-12px] md:space-x-[-20px]" id="blueTeamContainer">
+                <!-- 6 Blue Team Players populated dynamically -->
+            </div>
+
+        </div>
+    </main>
+
+    <!-- QUESTION & ANSWERS SECTION (BOTTOM PANEL) -->
+    <footer class="w-full bg-slate-900 border-t-4 border-amber-500/80 p-3 md:p-6 z-20 flex flex-col items-center shadow-2xl">
+        <div class="max-w-4xl w-full">
+            
+            <!-- Question Box -->
+            <div class="bg-gradient-to-r from-amber-100 via-amber-50 to-amber-100 border-2 border-amber-400 rounded-2xl p-3 md:p-5 shadow-md mb-3 md:mb-5 text-center relative overflow-hidden">
+                <div class="text-xs md:text-sm font-black text-amber-800 uppercase tracking-wider mb-1 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-circle-question text-amber-600"></i>
+                    <span>CÂU HỎI TRÍ TUỆ</span>
+                </div>
+                <h2 id="questionText" class="text-base md:text-2xl font-black text-slate-800 leading-snug">
+                    Đang tải câu hỏi...
+                </h2>
+            </div>
+
+            <!-- 4 Answer Buttons (2x2 Grid) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4" id="answersGrid">
+                <!-- Answer A -->
+                <button onclick="handleAnswerSelect(0)" class="btn-answer bg-gradient-to-r from-slate-800 to-slate-700 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-slate-600 hover:border-amber-400 text-left text-sm md:text-lg transition-all shadow-md flex items-center gap-3 group active:scale-95">
+                    <span class="w-7 h-7 md:w-9 md:h-9 bg-slate-700 group-hover:bg-amber-800 rounded-lg flex items-center justify-center font-black text-amber-400 group-hover:text-white border border-slate-500 text-xs md:text-base">A</span>
+                    <span class="answer-text flex-1" id="ans0">Đáp án A</span>
+                </button>
+                <!-- Answer B -->
+                <button onclick="handleAnswerSelect(1)" class="btn-answer bg-gradient-to-r from-slate-800 to-slate-700 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-slate-600 hover:border-amber-400 text-left text-sm md:text-lg transition-all shadow-md flex items-center gap-3 group active:scale-95">
+                    <span class="w-7 h-7 md:w-9 md:h-9 bg-slate-700 group-hover:bg-amber-800 rounded-lg flex items-center justify-center font-black text-amber-400 group-hover:text-white border border-slate-500 text-xs md:text-base">B</span>
+                    <span class="answer-text flex-1" id="ans1">Đáp án B</span>
+                </button>
+                <!-- Answer C -->
+                <button onclick="handleAnswerSelect(2)" class="btn-answer bg-gradient-to-r from-slate-800 to-slate-700 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-slate-600 hover:border-amber-400 text-left text-sm md:text-lg transition-all shadow-md flex items-center gap-3 group active:scale-95">
+                    <span class="w-7 h-7 md:w-9 md:h-9 bg-slate-700 group-hover:bg-amber-800 rounded-lg flex items-center justify-center font-black text-amber-400 group-hover:text-white border border-slate-500 text-xs md:text-base">C</span>
+                    <span class="answer-text flex-1" id="ans2">Đáp án C</span>
+                </button>
+                <!-- Answer D -->
+                <button onclick="handleAnswerSelect(3)" class="btn-answer bg-gradient-to-r from-slate-800 to-slate-700 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-slate-600 hover:border-amber-400 text-left text-sm md:text-lg transition-all shadow-md flex items-center gap-3 group active:scale-95">
+                    <span class="w-7 h-7 md:w-9 md:h-9 bg-slate-700 group-hover:bg-amber-800 rounded-lg flex items-center justify-center font-black text-amber-400 group-hover:text-white border border-slate-500 text-xs md:text-base">D</span>
+                    <span class="answer-text flex-1" id="ans3">Đáp án D</span>
+                </button>
+            </div>
+
+        </div>
+    </footer>
+
+    <!-- VICTORY MODAL OVERLAY -->
+    <div id="victoryModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gradient-to-b from-slate-800 to-slate-900 border-4 border-amber-400 rounded-3xl p-6 md:p-10 max-w-lg w-full text-center shadow-2xl relative transform transition-transform animate-bounce-short">
+            
+            <div class="text-6xl md:text-8xl mb-3" id="victoryEmoji">🏆</div>
+            <h2 class="text-2xl md:text-4xl font-black text-amber-400 mb-2 uppercase tracking-wide" id="victoryTitle">ĐỘI ĐỎ CHIẾN THẮNG!</h2>
+            <p class="text-slate-300 text-sm md:text-lg mb-6" id="victorySubtitle">Một trận kéo co vô cùng kịch tính!</p>
+
+            <!-- Final Scores -->
+            <div class="bg-slate-900/80 rounded-2xl p-4 border border-slate-700 flex justify-around items-center mb-6">
+                <div class="text-center">
+                    <div class="text-xs text-red-400 font-bold">ĐỘI ĐỎ</div>
+                    <div class="text-3xl font-black text-red-500" id="finalScoreRed">0</div>
+                </div>
+                <div class="text-xl font-black text-slate-500">VS</div>
+                <div class="text-center">
+                    <div class="text-xs text-blue-400 font-bold">ĐỘI XANH</div>
+                    <div class="text-3xl font-black text-blue-500" id="finalScoreBlue">0</div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button onclick="restartGame()" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black py-3 px-6 rounded-xl shadow-lg border border-emerald-400 transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> CHƠI LẠI
+                </button>
+                <button onclick="closeVictoryModal(); openAdminModal();" class="bg-slate-700 hover:bg-slate-600 text-amber-300 font-bold py-3 px-6 rounded-xl border border-slate-500 transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-pen-to-square"></i> ĐỔI CÂU HỎI
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEACHER / ADMIN PANEL MODAL -->
+    <div id="adminModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 md:p-6 hidden">
+        <div class="bg-slate-900 border-2 border-amber-500/60 rounded-2xl max-w-3xl w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            
+            <!-- Modal Header -->
+            <div class="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
+                <div class="flex items-center gap-2 text-amber-400 font-black text-lg md:text-xl">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>QUẢN LÝ CÂU HỎI & NẠP ẢNH ĐỘI HÌNH</span>
+                </div>
+                <button onclick="closeAdminModal()" class="text-slate-400 hover:text-white text-xl p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Tabs Navigation -->
+            <div class="flex border-b border-slate-700 bg-slate-900 px-4 pt-2 gap-2">
+                <button id="tabBtnQuestions" onclick="switchAdminTab('questions')" class="px-4 py-2 font-bold text-sm rounded-t-xl bg-slate-800 text-amber-400 border-t-2 border-x border-amber-400">
+                    <i class="fa-solid fa-list-check mr-1.5"></i> Danh sách câu hỏi
+                </button>
+                <button id="tabBtnAvatars" onclick="switchAdminTab('avatars')" class="px-4 py-2 font-bold text-sm rounded-t-xl bg-slate-900 text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-users text-amber-500 mr-1.5"></i> Ảnh 12 người chơi (6 Red / 6 Blue)
+                </button>
+            </div>
+
+            <!-- Questions Form Scrollable Area -->
+            <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar" id="adminQuestionsContainer">
+                <!-- Question Cards dynamically injected here -->
+            </div>
+
+            <!-- Team Avatars Management Scrollable Area -->
+            <div class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar hidden" id="adminAvatarsContainer">
+                <!-- Dynamic inputs for 6 Red & 6 Blue team members -->
+            </div>
+
+            <!-- Modal Footer Controls -->
+            <div class="bg-slate-800 p-4 border-t border-slate-700 flex flex-wrap justify-between items-center gap-2">
+                <button onclick="resetDefaultQuestions()" class="text-xs md:text-sm bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-700 px-3 py-2 rounded-xl transition-all">
+                    <i class="fa-solid fa-arrow-rotate-left mr-1"></i> Khôi phục dữ liệu gốc
+                </button>
+                
+                <div class="flex gap-2">
+                    <button onclick="closeAdminModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm transition-all">
+                        Hủy
+                    </button>
+                    <button onclick="saveAdminQuestions()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 py-2 rounded-xl text-sm border border-emerald-400 shadow-md transition-all">
+                        <i class="fa-solid fa-floppy-disk mr-1"></i> Lưu & Áp Dụng
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- AUDIO SYNTHESIZER SOUND EFFECTS (Web Audio API) -->
+    <script>
+        // Web Audio API Audio Context for crisp sound FX without external assets
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioCtx();
+            }
+        }
+
+        function playSound(type) {
+            try {
+                initAudio();
+                if (!audioCtx) return;
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                const now = audioCtx.currentTime;
+
+                if (type === 'correct') {
+                    // Upward Arpeggio sound
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, now); // C5
+                    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.1); // E5
+                    osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.2); // G5
+                    osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.3); // C6
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                } else if (type === 'wrong') {
+                    // Buzz sound
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, now);
+                    osc.frequency.linearRampToValueAtTime(110, now + 0.3);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'win') {
+                    // Fanfare flourish
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(554.37, now + 0.15);
+                    osc.frequency.setValueAtTime(659.25, now + 0.3);
+                    osc.frequency.setValueAtTime(880, now + 0.45);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                    osc.start(now);
+                    osc.stop(now + 0.8);
+                }
+            } catch (e) {
+                console.log('Audio playback prevented or unsupported');
+            }
+        }
+    </script>
+
+    <!-- GAME CORE LOGIC & STATE MANAGEMENT -->
+    <script>
+        // DEFAULT QUESTION SET (5 Questions)
+        const DEFAULT_QUESTIONS = [
+            {
+                question: "Đâu là hành tinh lớn nhất trong Hệ Mặt Trời của chúng ta?",
+                options: ["Trái Đất", "Sao Hỏa", "Sao Mộc", "Sao Thổ"],
+                correct: 2 // Index 2 -> Sao Mộc
+            },
+            {
+                question: "Loài động vật có vú nào duy nhất biết bay?",
+                options: ["Chim Bồ Câu", "Con Dơi", "Sóc Bay", "Đại Bàng"],
+                correct: 1 // Index 1 -> Con Dơi
+            },
+            {
+                question: "Số nguyên tố nhỏ nhất là số mấy?",
+                options: ["Số 0", "Số 1", "Số 2", "Số 3"],
+                correct: 2 // Index 2 -> Số 2
+            },
+            {
+                question: "Thành phố nào là thủ đô của Việt Nam?",
+                options: ["TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng", "Cần Thơ"],
+                correct: 1 // Index 1 -> Hà Nội
+            },
+            {
+                question: "Nước sôi ở nhiệt độ bao nhiêu độ C ở điều kiện tiêu chuẩn?",
+                options: ["50°C", "90°C", "100°C", "120°C"],
+                correct: 2 // Index 2 -> 100°C
+            }
+        ];
+
+        // Default SVG/Emoji Avatars for 6 players per team if teacher hasn't uploaded custom images
+        const DEFAULT_RED_AVATARS = ["👦", "👧", "🧒", "👦🏻", "👧🏻", "🧒🏻"];
+        const DEFAULT_BLUE_AVATARS = ["👦🏽", "👧🏽", "🧒🏽", "👦🏼", "👧🏼", "🧒🏼"];
+
+        // GAME STATE
+        let questions = [];
+        let redAvatars = Array(6).fill("");
+        let blueAvatars = Array(6).fill("");
+
+        let currentQuestionIndex = 0;
+        let scoreRed = 0;
+        let scoreBlue = 0;
+        let currentTurn = 'red'; // 'red' or 'blue'
+        let ropePosition = 0; // Negative = Pulled Red, Positive = Pulled Blue (px)
+        let isAnswerLocked = false;
+
+        // INITIALIZATION
+        window.addEventListener('DOMContentLoaded', () => {
+            loadGameData();
+            startGame();
+        });
+
+        // Load questions & team avatars from LocalStorage
+        function loadGameData() {
+            const savedQ = localStorage.getItem('tug_of_war_questions');
+            if (savedQ) {
+                try { questions = JSON.parse(savedQ); } catch (e) { questions = [...DEFAULT_QUESTIONS]; }
+            } else {
+                questions = [...DEFAULT_QUESTIONS];
+            }
+
+            const savedRed = localStorage.getItem('tug_of_war_red_avatars');
+            if (savedRed) {
+                try { redAvatars = JSON.parse(savedRed); } catch (e) { redAvatars = Array(6).fill(""); }
+            }
+
+            const savedBlue = localStorage.getItem('tug_of_war_blue_avatars');
+            if (savedBlue) {
+                try { blueAvatars = JSON.parse(savedBlue); } catch (e) { blueAvatars = Array(6).fill(""); }
+            }
+        }
+
+        // Save questions and avatars to LocalStorage
+        function saveGameDataToStorage(qArray, redAvs, blueAvs) {
+            localStorage.setItem('tug_of_war_questions', JSON.stringify(qArray));
+            localStorage.setItem('tug_of_war_red_avatars', JSON.stringify(redAvs));
+            localStorage.setItem('tug_of_war_blue_avatars', JSON.stringify(blueAvs));
+            questions = qArray;
+            redAvatars = redAvs;
+            blueAvatars = blueAvs;
+        }
+
+        // Start / Reset Game
+        function startGame() {
+            currentQuestionIndex = 0;
+            scoreRed = 0;
+            scoreBlue = 0;
+            currentTurn = 'red';
+            ropePosition = 0;
+            isAnswerLocked = false;
+
+            renderTeamPlayers();
+            updateScoreUI();
+            updateTugPositionUI();
+            renderCurrentQuestion();
+            updateTurnUI();
+            
+            document.getElementById('victoryModal').classList.add('hidden');
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        // Render 6 Red Players & 6 Blue Players dynamically with uploaded images or defaults
+        function renderTeamPlayers() {
+            const redContainer = document.getElementById('redTeamContainer');
+            const blueContainer = document.getElementById('blueTeamContainer');
+
+            // Render Red Team (6 Players)
+            redContainer.innerHTML = redAvatars.map((imgData, i) => {
+                const avatarHtml = imgData 
+                    ? `<img src="${imgData}" class="player-head-frame" alt="Red ${i+1}">`
+                    : `<div class="player-head-frame flex items-center justify-center text-xl md:text-3xl">${DEFAULT_RED_AVATARS[i % DEFAULT_RED_AVATARS.length]}</div>`;
+
+                return `
+                    <div class="flex flex-col items-center transform -scale-x-100 hover:scale-105 transition-transform">
+                        ${avatarHtml}
+                        <div class="w-7 h-9 md:w-11 md:h-13 bg-red-600 rounded-t-lg border-2 border-red-800 -mt-1.5 shadow-sm"></div>
+                    </div>
+                `;
+            }).join('');
+
+            // Render Blue Team (6 Players)
+            blueContainer.innerHTML = blueAvatars.map((imgData, i) => {
+                const avatarHtml = imgData 
+                    ? `<img src="${imgData}" class="player-head-frame" alt="Blue ${i+1}">`
+                    : `<div class="player-head-frame flex items-center justify-center text-xl md:text-3xl">${DEFAULT_BLUE_AVATARS[i % DEFAULT_BLUE_AVATARS.length]}</div>`;
+
+                return `
+                    <div class="flex flex-col items-center hover:scale-105 transition-transform">
+                        ${avatarHtml}
+                        <div class="w-7 h-9 md:w-11 md:h-13 bg-blue-600 rounded-t-lg border-2 border-blue-800 -mt-1.5 shadow-sm"></div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Render Question and Answers
+        function renderCurrentQuestion() {
+            if (currentQuestionIndex >= questions.length) {
+                endGame();
+                return;
+            }
+
+            const qData = questions[currentQuestionIndex];
+            document.getElementById('questionCounter').innerText = `Câu ${currentQuestionIndex + 1}/${questions.length}`;
+            document.getElementById('questionText').innerText = qData.question;
+
+            for (let i = 0; i < 4; i++) {
+                const ansBtn = document.querySelectorAll('.btn-answer')[i];
+                const ansText = document.getElementById(`ans${i}`);
+                
+                ansText.innerText = qData.options[i];
+                
+                // Reset button styling
+                ansBtn.disabled = false;
+                ansBtn.className = "btn-answer bg-gradient-to-r from-slate-800 to-slate-700 hover:from-amber-600 hover:to-orange-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-slate-600 hover:border-amber-400 text-left text-sm md:text-lg transition-all shadow-md flex items-center gap-3 group active:scale-95";
+            }
+
+            isAnswerLocked = false;
+        }
+
+        // Update Turn Indicator UI
+        function updateTurnUI() {
+            const banner = document.getElementById('turnBanner');
+            const teamName = document.getElementById('turnTeamName');
+            const redCard = document.getElementById('redScoreCard');
+            const blueCard = document.getElementById('blueScoreCard');
+
+            banner.classList.remove('opacity-0', '-translate-y-2');
+            
+            if (currentTurn === 'red') {
+                teamName.innerText = "ĐỘI ĐỎ";
+                banner.className = "absolute top-4 z-10 px-6 py-2 rounded-full font-black text-sm md:text-lg shadow-xl border-2 transition-all duration-500 bg-red-600 text-white border-red-300 turn-red";
+                redCard.classList.add('scale-105', 'ring-4', 'ring-red-400');
+                blueCard.classList.remove('scale-105', 'ring-4', 'ring-blue-400');
+            } else {
+                teamName.innerText = "ĐỘI XANH";
+                banner.className = "absolute top-4 z-10 px-6 py-2 rounded-full font-black text-sm md:text-lg shadow-xl border-2 transition-all duration-500 bg-blue-600 text-white border-blue-300 turn-blue";
+                blueCard.classList.add('scale-105', 'ring-4', 'ring-blue-400');
+                redCard.classList.remove('scale-105', 'ring-4', 'ring-red-400');
+            }
+        }
+
+        // Handle Answer Selection
+        function handleAnswerSelect(selectedIndex) {
+            if (isAnswerLocked) return;
+            isAnswerLocked = true;
+
+            const qData = questions[currentQuestionIndex];
+            const answerButtons = document.querySelectorAll('.btn-answer');
+            const selectedBtn = answerButtons[selectedIndex];
+            const correctBtn = answerButtons[qData.correct];
+
+            // Disable all buttons immediately
+            answerButtons.forEach(btn => btn.disabled = true);
+
+            if (selectedIndex === qData.correct) {
+                // CORRECT ANSWER!
+                playSound('correct');
+                selectedBtn.className = "btn-answer bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-emerald-300 text-left text-sm md:text-lg transition-all shadow-lg flex items-center gap-3 ring-4 ring-emerald-400 animate-bounce-short";
+
+                // Add 10 Points to active turn team
+                if (currentTurn === 'red') {
+                    scoreRed += 10;
+                    ropePosition -= 60; // Move left towards Red
+                    showFloatingScore('+10', 'red');
+                } else {
+                    scoreBlue += 10;
+                    ropePosition += 60; // Move right towards Blue
+                    showFloatingScore('+10', 'blue');
+                }
+
+                updateScoreUI();
+                updateTugPositionUI();
+
+            } else {
+                // WRONG ANSWER
+                playSound('wrong');
+                selectedBtn.className = "btn-answer bg-gradient-to-r from-red-700 to-rose-800 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-red-400 text-left text-sm md:text-lg transition-all shadow-md flex items-center gap-3 ring-2 ring-red-500";
+                
+                // Highlight the correct answer
+                correctBtn.className = "btn-answer bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 px-4 md:py-4 md:px-6 rounded-xl border-2 border-emerald-300 text-left text-sm md:text-lg transition-all shadow-lg flex items-center gap-3";
+            }
+
+            // Alternate turn for next question & move to next
+            setTimeout(() => {
+                currentTurn = (currentTurn === 'red') ? 'blue' : 'red';
+                currentQuestionIndex++;
+                updateTurnUI();
+                renderCurrentQuestion();
+            }, 2000);
+        }
+
+        // Floating "+10" score animation
+        function showFloatingScore(text, team) {
+            const container = document.getElementById('floatingEffectContainer');
+            const scoreEl = document.createElement('div');
+            scoreEl.className = `absolute font-black text-3xl md:text-5xl animate-float-score ${team === 'red' ? 'text-red-500 left-1/4' : 'text-blue-500 right-1/4'} top-1/3 drop-shadow-lg z-40`;
+            scoreEl.innerText = text;
+            container.appendChild(scoreEl);
+
+            setTimeout(() => {
+                scoreEl.remove();
+            }, 1200);
+        }
+
+        // Update Score Text
+        function updateScoreUI() {
+            document.getElementById('scoreRed').innerText = scoreRed;
+            document.getElementById('scoreBlue').innerText = scoreBlue;
+        }
+
+        // Update Position of Tug Group (Physical pulling effect)
+        function updateTugPositionUI() {
+            const tugGroup = document.getElementById('tugGroup');
+            const ribbon = document.getElementById('centerRibbon');
+            
+            // Translate the entire tug container
+            tugGroup.style.transform = `translateX(${ropePosition}px)`;
+
+            // Tilt ribbon based on pull direction
+            if (ropePosition < 0) {
+                ribbon.style.transform = `rotate(-15deg) scale(1.1)`;
+            } else if (ropePosition > 0) {
+                ribbon.style.transform = `rotate(15deg) scale(1.1)`;
+            } else {
+                ribbon.style.transform = `rotate(0deg) scale(1)`;
+            }
+        }
+
+        // End Game & Trigger Celebration
+        function endGame() {
+            playSound('win');
+
+            const modal = document.getElementById('victoryModal');
+            const title = document.getElementById('victoryTitle');
+            const subtitle = document.getElementById('victorySubtitle');
+            const emoji = document.getElementById('victoryEmoji');
+
+            document.getElementById('finalScoreRed').innerText = scoreRed;
+            document.getElementById('finalScoreBlue').innerText = scoreBlue;
+
+            if (scoreRed > scoreBlue) {
+                emoji.innerText = "🚩🏆";
+                title.innerText = "ĐỘI ĐỎ CHIẾN THẮNG!";
+                title.className = "text-2xl md:text-4xl font-black text-red-500 mb-2 uppercase tracking-wide";
+                subtitle.innerText = "Đội Đỏ đã thể hiện trí tuệ xuất sắc và sức mạnh tuyệt vời!";
+            } else if (scoreBlue > scoreRed) {
+                emoji.innerText = "🔷🏆";
+                title.innerText = "ĐỘI XANH CHIẾN THẮNG!";
+                title.className = "text-2xl md:text-4xl font-black text-blue-500 mb-2 uppercase tracking-wide";
+                subtitle.innerText = "Đội Xanh đã xuất sắc vươn lên giành chiến thắng chung cuộc!";
+            } else {
+                emoji.innerText = "🤝";
+                title.innerText = "HAI ĐỘI HÒA NHAU!";
+                title.className = "text-2xl md:text-4xl font-black text-amber-400 mb-2 uppercase tracking-wide";
+                subtitle.innerText = "Trận đấu cân tài cân sức khép lại với kết quả vô cùng đẹp!";
+            }
+
+            modal.classList.remove('hidden');
+
+            // Fire confetti animation
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 120,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                });
+                setTimeout(() => {
+                    confetti({
+                        particleCount: 80,
+                        angle: 60,
+                        spread: 55,
+                        origin: { x: 0 }
+                    });
+                    confetti({
+                        particleCount: 80,
+                        angle: 120,
+                        spread: 55,
+                        origin: { x: 1 }
+                    });
+                }, 300);
+            }
+        }
+
+        function closeVictoryModal() {
+            document.getElementById('victoryModal').classList.add('hidden');
+        }
+
+        // ==========================================
+        // TEACHER / ADMIN PANEL FUNCTIONS
+        // ==========================================
+
+        function switchAdminTab(tab) {
+            const btnQ = document.getElementById('tabBtnQuestions');
+            const btnA = document.getElementById('tabBtnAvatars');
+            const containerQ = document.getElementById('adminQuestionsContainer');
+            const containerA = document.getElementById('adminAvatarsContainer');
+
+            if (tab === 'questions') {
+                btnQ.className = "px-4 py-2 font-bold text-sm rounded-t-xl bg-slate-800 text-amber-400 border-t-2 border-x border-amber-400";
+                btnA.className = "px-4 py-2 font-bold text-sm rounded-t-xl bg-slate-900 text-slate-400 hover:text-white";
+                containerQ.classList.remove('hidden');
+                containerA.classList.add('hidden');
+            } else {
+                btnA.className = "px-4 py-2 font-bold text-sm rounded-t-xl bg-slate-800 text-amber-400 border-t-2 border-x border-amber-400";
+                btnQ.className = "px-4 py-2 font-bold text-sm rounded-t-xl bg-slate-900 text-slate-400 hover:text-white";
+                containerA.classList.remove('hidden');
+                containerQ.classList.add('hidden');
+            }
+        }
+
+        function openAdminModal() {
+            switchAdminTab('questions');
+            renderAdminQuestionsForm();
+            renderAdminAvatarsForm();
+            document.getElementById('adminModal').classList.remove('hidden');
+        }
+
+        function closeAdminModal() {
+            document.getElementById('adminModal').classList.add('hidden');
+        }
+
+        function renderAdminQuestionsForm() {
+            const container = document.getElementById('adminQuestionsContainer');
+            container.innerHTML = '';
+
+            questions.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-md space-y-3";
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                        <span class="font-black text-amber-400 text-sm md:text-base">CÂU HỎI ${idx + 1}</span>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 mb-1">Nội dung câu hỏi:</label>
+                        <input type="text" id="admin_q_${idx}" value="${escapeHtml(q.question)}" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2.5 text-slate-100 text-sm focus:outline-none focus:border-amber-400">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        ${q.options.map((opt, optIdx) => `
+                            <div>
+                                <label class="block text-xs font-bold text-slate-400 mb-1">Đáp án ${String.fromCharCode(65 + optIdx)}:</label>
+                                <input type="text" id="admin_opt_${idx}_${optIdx}" value="${escapeHtml(opt)}" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-slate-100 text-sm focus:outline-none focus:border-amber-400">
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 mb-1">Đáp án đúng:</label>
+                        <select id="admin_correct_${idx}" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-amber-400 font-bold text-sm focus:outline-none focus:border-amber-400">
+                            <option value="0" ${q.correct === 0 ? 'selected' : ''}>A</option>
+                            <option value="1" ${q.correct === 1 ? 'selected' : ''}>B</option>
+                            <option value="2" ${q.correct === 2 ? 'selected' : ''}>C</option>
+                            <option value="3" ${q.correct === 3 ? 'selected' : ''}>D</option>
+                        </select>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Render image upload section for 6 Red and 6 Blue team members
+        function renderAdminAvatarsForm() {
+            const container = document.getElementById('adminAvatarsContainer');
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Red Team Uploads -->
+                    <div class="bg-slate-800/80 border border-red-500/40 rounded-xl p-4 space-y-4">
+                        <h3 class="text-red-400 font-black text-base border-b border-red-500/30 pb-2 flex items-center gap-2">
+                            <span>🚩 ĐỘI ĐỎ (6 Thành Viên)</span>
+                        </h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="redAvatarsGrid">
+                            ${redAvatars.map((imgSrc, i) => renderAvatarUploadItem('red', i, imgSrc)).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Blue Team Uploads -->
+                    <div class="bg-slate-800/80 border border-blue-500/40 rounded-xl p-4 space-y-4">
+                        <h3 class="text-blue-400 font-black text-base border-b border-blue-500/30 pb-2 flex items-center gap-2">
+                            <span>🔷 ĐỘI XANH (6 Thành Viên)</span>
+                        </h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="blueAvatarsGrid">
+                            ${blueAvatars.map((imgSrc, i) => renderAvatarUploadItem('blue', i, imgSrc)).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAvatarUploadItem(team, index, imgSrc) {
+            const prevHtml = imgSrc 
+                ? `<img src="${imgSrc}" class="w-12 h-12 rounded-full object-cover border-2 border-amber-400 shadow">`
+                : `<div class="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-xl text-slate-300 border border-slate-500"><i class="fa-solid fa-user"></i></div>`;
+
+            return `
+                <div class="bg-slate-900 border border-slate-700 p-2.5 rounded-lg flex flex-col items-center space-y-2">
+                    <span class="text-xs font-bold text-slate-300">VĐV ${index + 1}</span>
+                    <div id="${team}_prev_${index}">${prevHtml}</div>
+                    <label class="cursor-pointer text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-400 px-2.5 py-1 rounded-md transition-all">
+                        <i class="fa-solid fa-camera mr-1"></i> Đổi ảnh
+                        <input type="file" accept="image/*" class="hidden" onchange="handleImageUpload(event, '${team}', ${index})">
+                    </label>
+                    ${imgSrc ? `<button type="button" onclick="removeAvatar('${team}', ${index})" class="text-[10px] text-red-400 hover:underline">Xóa ảnh</button>` : ''}
+                </div>
+            `;
+        }
+
+        // Process Image File to Base64
+        function handleImageUpload(event, team, index) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Img = e.target.result;
+                if (team === 'red') {
+                    redAvatars[index] = base64Img;
+                } else {
+                    blueAvatars[index] = base64Img;
+                }
+                renderAdminAvatarsForm();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeAvatar(team, index) {
+            if (team === 'red') {
+                redAvatars[index] = "";
+            } else {
+                blueAvatars[index] = "";
+            }
+            renderAdminAvatarsForm();
+        }
+
+        function saveAdminQuestions() {
+            const newQuestions = [];
+            for (let i = 0; i < questions.length; i++) {
+                const qText = document.getElementById(`admin_q_${i}`).value.trim();
+                const optA = document.getElementById(`admin_opt_${i}_0`).value.trim();
+                const optB = document.getElementById(`admin_opt_${i}_1`).value.trim();
+                const optC = document.getElementById(`admin_opt_${i}_2`).value.trim();
+                const optD = document.getElementById(`admin_opt_${i}_3`).value.trim();
+                const correct = parseInt(document.getElementById(`admin_correct_${i}`).value);
+
+                if (!qText || !optA || !optB || !optC || !optD) {
+                    alert('Vui lòng điền đầy đủ thông tin câu hỏi và các đáp án!');
+                    return;
+                }
+
+                newQuestions.push({
+                    question: qText,
+                    options: [optA, optB, optC, optD],
+                    correct: correct
+                });
+            }
+
+            saveGameDataToStorage(newQuestions, redAvatars, blueAvatars);
+            closeAdminModal();
+            startGame();
+        }
+
+        function resetDefaultQuestions() {
+            saveGameDataToStorage([...DEFAULT_QUESTIONS], Array(6).fill(""), Array(6).fill(""));
+            renderAdminQuestionsForm();
+            renderAdminAvatarsForm();
+        }
+
+        // Helper to prevent HTML injection issues in input fields
+        function escapeHtml(str) {
+            return str.replace(/"/g, '&quot;');
+        }
+
+        // Attach modal trigger
+        document.getElementById('btnOpenAdmin').addEventListener('click', openAdminModal);
+    </script>
+</body>
+</html>
